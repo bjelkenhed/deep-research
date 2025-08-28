@@ -1,0 +1,66 @@
+[build-system]
+requires = [
+    "setuptools>=45",
+    "build",
+]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+include = ["deep_research*"]
+
+[tool.setuptools.package-data]
+deep_research = []
+
+[project]
+name = "deep-research"
+version = "0.1.0"
+description = "Advanced research tools and utilities for deep analysis and investigation"
+readme = "README.md"
+requires-python = ">=3.11"
+license = {text = "MIT"}
+keywords = ["research", "analysis", "investigation", "tools", "utilities"]
+authors = [
+    { name = "Magnus Bjelkenhed", email = "bjelkenhed@gmail.com" }
+]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Researchers",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+    "Topic :: Scientific/Engineering",
+    "Topic :: Text Processing :: Linguistic",
+]
+
+dependencies = [
+    "agentic-blocks",
+    "tavily-python",
+    "python-dotenv",
+    "openai",
+    "langchain-core",
+]
+
+[project.urls]
+Homepage = "https://github.com/bjelkenhed/deep-research"
+Repository = "https://github.com/bjelkenhed/deep-research"
+Issues = "https://github.com/bjelkenhed/deep-research/issues"
+
+[project.optional-dependencies]
+test = [
+    "pytest",
+]
+dev = [
+    "pytest",
+    "build",
+    "twine",
+]
+
+[dependency-groups]
+dev = [
+    "build>=1.3.0",
+    "twine>=6.1.0",
+]

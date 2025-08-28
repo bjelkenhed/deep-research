@@ -1,0 +1,2344 @@
+
+================================================
+FILE: README.md
+================================================
+# Agentic Blocks
+
+Building blocks for agentic systems with a focus on simplicity and ease of use.
+
+## Overview
+
+Agentic Blocks provides clean, simple components for building AI agent systems, specifically focused on:
+
+- **MCP Client**: Connect to Model Control Protocol (MCP) endpoints with a sync-by-default API
+- **Messages**: Manage LLM conversation history with OpenAI-compatible format
+- **LLM**: Simple function for calling OpenAI-compatible completion APIs
+
+All components follow principles of simplicity, maintainability, and ease of use.
+
+
+## Quick Start
+
+### MCPClient - Connect to MCP Endpoints
+
+The MCPClient provides a unified interface for connecting to different types of MCP endpoints:
+
+```python
+from agentic_blocks import MCPClient
+
+# Connect to an SSE endpoint (sync by default)
+client = MCPClient("https://example.com/mcp/server/sse")
+
+# List available tools
+tools = client.list_tools()
+print(f"Available tools: {len(tools)}")
+
+# Call a tool
+result = client.call_tool("search", {"query": "What is MCP?"})
+print(result)
+```
+
+**Supported endpoint types:**
+- **SSE endpoints**: URLs with `/sse` in the path
+- **HTTP endpoints**: URLs with `/mcp` in the path  
+- **Local scripts**: File paths to Python MCP servers
+
+**Async support for advanced users:**
+```python
+# Async versions available
+tools = await client.list_tools_async()
+result = await client.call_tool_async("search", {"query": "async example"})
+```
+
+### Messages - Manage Conversation History
+
+The Messages class helps build and manage LLM conversations in OpenAI-compatible format:
+
+```python
+from agentic_blocks import Messages
+
+# Initialize with system prompt
+messages = Messages(
+    system_prompt="You are a helpful assistant.",
+    user_prompt="Hello, how can you help me?",
+    add_date_and_time=True
+)
+
+# Add assistant response
+messages.add_assistant_message("I can help you with various tasks!")
+
+# Add tool calls
+tool_call = {
+    "id": "call_123",
+    "type": "function", 
+    "function": {"name": "get_weather", "arguments": '{"location": "Paris"}'}
+}
+messages.add_tool_call(tool_call)
+
+# Add tool response
+messages.add_tool_response("call_123", "The weather in Paris is sunny, 22°C")
+
+# Get messages for LLM API
+conversation = messages.get_messages()
+
+# View readable format
+print(messages)
+```
+
+### LLM - Call OpenAI-Compatible APIs
+
+The `call_llm` function provides a simple interface for calling LLM completion APIs:
+
+```python
+from agentic_blocks import call_llm, Messages
+
+# Method 1: Using with Messages object
+messages = Messages(
+    system_prompt="You are a helpful assistant.",
+    user_prompt="What is the capital of France?"
+)
+
+response = call_llm(messages, temperature=0.7)
+print(response)  # "The capital of France is Paris."
+```
+
+```python
+# Method 2: Using with raw message list  
+messages_list = [
+    {"role": "system", "content": "You are a helpful assistant."},
+    {"role": "user", "content": "What is 2+2?"}
+]
+
+response = call_llm(messages_list, model="gpt-4o-mini")
+print(response)  # "2+2 equals 4."
+```
+
+```python
+# Method 3: Using with tools (for function calling)
+tools = [
+    {
+        "type": "function",
+        "function": {
+            "name": "get_weather",
+            "description": "Get current weather for a location",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "location": {"type": "string", "description": "City name"}
+                },
+                "required": ["location"]
+            }
+        }
+    }
+]
+
+messages = Messages(user_prompt="What's the weather like in Stockholm?")
+response = call_llm(messages, tools=tools)
+print(response)
+```
+
+**Environment Setup:**
+Create a `.env` file in your project root:
+```
+OPENAI_API_KEY=your_api_key_here
+```
+
+Or pass the API key directly:
+```python
+response = call_llm(messages, api_key="your_api_key_here")
+```
+
+## Complete Example - Tool Calling with Weather API
+
+This example demonstrates a complete workflow using function calling with an LLM. For a full interactive notebook version, see `notebooks/agentic_example.ipynb`.
+
+```python
+from agentic_blocks import call_llm, Messages
+
+# Define tools in OpenAI function calling format
+tools = [
+    {
+        "type": "function",
+        "function": {
+            "name": "get_weather",
+            "description": "Get current weather information for a location",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "location": {
+                        "type": "string",
+                        "description": "The city and state, e.g. San Francisco, CA"
+                    },
+                    "unit": {
+                        "type": "string", 
+                        "enum": ["celsius", "fahrenheit"],
+                        "description": "Temperature unit"
+                    }
+                },
+                "required": ["location"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "calculate",
+            "description": "Perform a mathematical calculation",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "expression": {
+                        "type": "string",
+                        "description": "Mathematical expression to evaluate"
+                    }
+                },
+                "required": ["expression"]
+            }
+        }
+    }
+]
+
+# Create conversation with system and user prompts
+messages = Messages(
+    system_prompt="You are a helpful assistant with access to weather and calculation tools.",
+    user_prompt="What is the weather in Stockholm?"
+)
+
+# Call LLM with tools - it will decide which tools to call
+model = "gpt-4o-mini"  # or your preferred model
+response = call_llm(model=model, messages=messages, tools=tools)
+
+# Add the LLM's response (including any tool calls) to conversation
+messages.add_response_message(response)
+
+# Display the conversation so far
+for message in messages.get_messages():
+    print(message)
+
+# Check if there are pending tool calls that need execution
+print("Has pending tool calls:", messages.has_pending_tool_calls())
+
+# In a real implementation, you would:
+# 1. Execute the actual tool calls (get_weather, calculate, etc.)
+# 2. Add tool responses using messages.add_tool_response()
+# 3. Call the LLM again to get the final user-facing response
+```
+
+**Expected Output:**
+```
+{'role': 'system', 'content': 'You are a helpful assistant with access to weather and calculation tools.'}
+{'role': 'user', 'content': 'What is the weather in Stockholm?'}
+{'role': 'assistant', 'content': '', 'tool_calls': [{'id': 'call_abc123', 'type': 'function', 'function': {'name': 'get_weather', 'arguments': '{"location": "Stockholm, Sweden", "unit": "celsius"}'}}]}
+Has pending tool calls: True
+```
+
+**Key Features Demonstrated:**
+- **Messages management**: Clean conversation history with system/user prompts
+- **Tool calling**: LLM automatically decides to call the `get_weather` function
+- **Response handling**: `add_response_message()` handles both content and tool calls
+- **Pending detection**: `has_pending_tool_calls()` identifies when tools need execution
+
+**Next Steps:**
+After the LLM makes tool calls, you would implement the actual tool functions and continue the conversation:
+
+```python
+# Implement actual weather function
+def get_weather(location, unit="celsius"):
+    # Your weather API implementation here
+    return f"The weather in {location} is sunny, 22°{unit[0].upper()}"
+
+# Execute pending tool calls
+if messages.has_pending_tool_calls():
+    last_message = messages.get_messages()[-1]
+    for tool_call in last_message.get("tool_calls", []):
+        if tool_call["function"]["name"] == "get_weather":
+            import json
+            args = json.loads(tool_call["function"]["arguments"])
+            result = get_weather(**args)
+            messages.add_tool_response(tool_call["id"], result)
+    
+    # Get final response from LLM
+    final_response = call_llm(model=model, messages=messages)
+    messages.add_assistant_message(final_response)
+    print(f"Final response: {final_response}")
+```
+
+## Development Principles
+
+This project follows these core principles:
+
+- **Simplicity First**: Keep code simple, readable, and focused on core functionality
+- **Sync-by-Default**: Primary methods are synchronous for ease of use, with optional async versions
+- **Minimal Dependencies**: Avoid over-engineering and complex error handling unless necessary  
+- **Clean APIs**: Prefer straightforward method names and clear parameter expectations
+- **Maintainable Code**: Favor fewer lines of clear code over comprehensive edge case handling
+
+## API Reference
+
+### MCPClient
+
+```python
+MCPClient(endpoint: str, timeout: int = 30)
+```
+
+**Methods:**
+- `list_tools() -> List[Dict]`: Get available tools (sync)
+- `call_tool(name: str, args: Dict) -> Dict`: Call a tool (sync)
+- `list_tools_async() -> List[Dict]`: Async version of list_tools
+- `call_tool_async(name: str, args: Dict) -> Dict`: Async version of call_tool
+
+### Messages
+
+```python
+Messages(system_prompt=None, user_prompt=None, add_date_and_time=False)
+```
+
+**Methods:**
+- `add_system_message(content: str)`: Add system message
+- `add_user_message(content: str)`: Add user message
+- `add_assistant_message(content: str)`: Add assistant message
+- `add_tool_call(tool_call: Dict)`: Add tool call to assistant message
+- `add_tool_calls(tool_calls)`: Add multiple tool calls from ChatCompletionMessageFunctionToolCall objects
+- `add_response_message(message)`: Add ChatCompletionMessage response to conversation
+- `add_tool_response(call_id: str, content: str)`: Add tool response
+- `get_messages() -> List[Dict]`: Get all messages
+- `has_pending_tool_calls() -> bool`: Check for pending tool calls
+
+### call_llm
+
+```python
+call_llm(messages, tools=None, api_key=None, model="gpt-4o-mini", **kwargs) -> str
+```
+
+**Parameters:**
+- `messages`: Either a `Messages` instance or list of message dictionaries
+- `tools`: Optional list of tools in OpenAI function calling format
+- `api_key`: OpenAI API key (defaults to OPENAI_API_KEY from .env)
+- `model`: Model name to use for completion
+- `**kwargs`: Additional parameters passed to OpenAI API (temperature, max_tokens, etc.)
+
+**Returns:** The assistant's response content as a string
+
+## Requirements
+
+- Python >= 3.11
+- Dependencies: `mcp`, `requests`, `python-dotenv`, `openai`
+
+## License
+
+MIT
+
+
+================================================
+FILE: CLAUDE.md
+================================================
+# CLAUDE.md
+
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+
+## Project Overview
+
+This is a Python package called "agentic-blocks" that provides building blocks for agentic systems, specifically focused on Model Control Protocol (MCP) client functionality and LLM message management.
+
+## Development Commands
+
+### Installation and Setup
+```bash
+pip install -e .                    # Install package in development mode
+pip install -e ".[dev]"             # Install with development dependencies
+pip install -e ".[test]"            # Install with test dependencies
+```
+
+### Building
+```bash
+python -m build                     # Build the package
+```
+
+### Testing
+```bash
+pytest                              # Run all tests
+pytest tests/                       # Run tests in tests directory
+```
+
+### Running the Application
+```bash
+agentic-blocks                      # Run main entry point (references agentic_blocks.main:app - not yet implemented)
+python hello.py                     # Run the hello script
+```
+
+## Code Architecture
+
+### Core Components
+
+#### MCPClient (`src/agentic_blocks/mcp_client.py`)
+- **Purpose**: Simplified client for connecting to MCP (Model Control Protocol) endpoints
+- **Transport Types**:
+  - SSE endpoints (Server-Sent Events): URLs with `/sse` in path
+  - Streamable HTTP endpoints: URLs with `/mcp` in path  
+  - Local StdioServer: File paths to Python scripts
+- **Key Methods** (sync-by-default):
+  - `list_tools()`: Get available tools in OpenAI format
+  - `call_tool(tool_name, arguments)`: Execute individual tools
+  - `list_tools_async()`: Async version for advanced users
+  - `call_tool_async()`: Async version for advanced users
+- **Features**: Clean API, automatic transport detection, OpenAI-compatible output
+
+#### Messages (`src/agentic_blocks/messages.py`)
+- **Purpose**: Simplified conversation history management for LLM interactions
+- **Key Methods**:
+  - `add_system_message(content)`: Add system messages
+  - `add_user_message(content)`: Add user messages  
+  - `add_assistant_message(content)`: Add assistant messages
+  - `add_tool_call(tool_call)`: Add tool calls to assistant messages
+  - `add_tool_response(call_id, content)`: Add individual tool responses
+  - `get_messages()`: Get the full conversation history
+- **Features**: OpenAI-compatible format, clean string representation, tool call tracking
+
+#### LLM Interface (`src/agentic_blocks/llm.py`)
+- **Purpose**: Low-level interface to OpenAI-compatible language models
+- **Key Function**: `call_llm(messages, tools=None, **kwargs)` 
+- **Design Philosophy**: Returns complete OpenAI message objects (not just content) to preserve all information including tool calls, enabling users to understand and work with the full API response structure
+- **Educational Value**: Exposes how OpenAI function calling works at the protocol level, making it clear when models request tool calls vs. returning direct responses
+
+### Key Configuration
+- Requires Python >=3.11
+- Main dependencies: requests, python-dotenv, pytest, openai, mcp (Model Control Protocol)
+- Uses setuptools for packaging
+- Entry point: `agentic_blocks.main:app` (not yet implemented)
+
+### Development Principles
+- **Simplicity First**: Keep code simple, readable, and focused on core functionality
+- **Sync-by-Default**: Primary methods are synchronous for ease of use, with optional async versions
+- **Minimal Dependencies**: Avoid over-engineering and complex error handling unless necessary
+- **Clean APIs**: Prefer straightforward method names and clear parameter expectations
+- **Maintainable Code**: Favor fewer lines of clear code over comprehensive edge case handling
+- **Educational Foundation**: Code and examples prioritize being educational and transparent about how underlying standards work (OpenAI function calling, MCP protocol, etc.). This helps users understand the mechanics before higher-level functionality is built on top, enabling them to choose the right abstraction level for their specific use case. Low-level functions expose complete API responses rather than hiding implementation details.
+
+### Usage Patterns
+- Both components support async and sync operations
+- MCPClient auto-detects transport type from endpoint URL/path
+- Messages class handles the full conversation flow including tool execution
+- Designed for integration with OpenAI-style LLM APIs
+
+
+================================================
+FILE: LICENSE
+================================================
+MIT License
+
+Copyright (c) 2024 Magnus Bjelkenhed
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+
+================================================
+FILE: Makefile
+================================================
+.PHONY: clean build publish install-dev version-show version-patch publish-patch help
+
+# Default target
+help:
+	@echo "Available targets:"
+	@echo "  clean        - Remove build artifacts"
+	@echo "  build        - Build the package"
+	@echo "  publish      - Build and publish to PyPI"
+	@echo "  install-dev  - Install development dependencies"
+	@echo "  version-show - Show current version"
+	@echo "  version-patch - Bump patch version (0.1.0 → 0.1.1)"
+	@echo "  publish-patch - Bump patch version and publish"
+	@echo "  help         - Show this help message"
+
+# Remove build artifacts
+clean:
+	@echo "🧹 Cleaning build artifacts..."
+	rm -rf dist/
+	rm -rf build/
+	rm -rf src/*.egg-info/
+	@echo "✅ Clean complete"
+
+# Install development dependencies
+install-dev:
+	@echo "📦 Installing development dependencies..."
+	uv add --dev build twine
+	@echo "✅ Development dependencies installed"
+
+# Build the package
+build: clean
+	@echo "🔨 Building package..."
+	uv run python -m build
+	@echo "✅ Package built successfully"
+
+# Version management
+version-show:
+	@grep 'version = ' pyproject.toml | cut -d'"' -f2
+
+version-patch:
+	@current=$$(grep 'version = ' pyproject.toml | cut -d'"' -f2); \
+	major=$$(echo $$current | cut -d. -f1); \
+	minor=$$(echo $$current | cut -d. -f2); \
+	patch=$$(echo $$current | cut -d. -f3); \
+	new_patch=$$((patch + 1)); \
+	new_version="$$major.$$minor.$$new_patch"; \
+	sed -i '' "s/version = \"$$current\"/version = \"$$new_version\"/" pyproject.toml; \
+	echo "✅ Version bumped from $$current to $$new_version"
+
+# Publish to PyPI
+publish: build
+	@echo "🚀 Publishing to PyPI..."
+	@if [ ! -f .env ]; then \
+		echo "❌ Error: .env file not found"; \
+		echo "   Please create .env with your PyPI token"; \
+		exit 1; \
+	fi
+	@export TWINE_USERNAME=__token__ && \
+	export TWINE_PASSWORD=$$(grep PYPI_API_TOKEN .env | cut -d'=' -f2) && \
+	uv run python -m twine upload dist/* --verbose
+	@echo "✅ Published successfully!"
+	@echo "🌐 View at: https://pypi.org/project/agentic-blocks/"
+
+# Bump patch version and publish
+publish-patch: version-patch publish
+
+
+================================================
+FILE: pyproject.toml
+================================================
+[build-system]
+requires = [
+    "setuptools>=45",
+    "build",
+]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+include = ["agentic_blocks*"]
+
+[tool.setuptools.package-data]
+agentic_blocks = []
+
+[project]
+name = "agentic-blocks"
+version = "0.1.11"
+description = "Simple building blocks for agentic AI systems with MCP client and conversation management"
+readme = "README.md"
+requires-python = ">=3.11"
+license = {text = "MIT"}
+keywords = ["ai", "mcp", "model-control-protocol", "agent", "llm", "openai", "conversation"]
+authors = [
+    { name = "Magnus Bjelkenhed", email = "bjelkenhed@gmail.com" }
+]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+]
+
+dependencies = [
+    "mcp",
+    "requests",
+    "python-dotenv",
+    "openai",
+    "langchain-core",
+]
+
+[project.urls]
+Homepage = "https://github.com/bjelkenhed/agentic-blocks"
+Repository = "https://github.com/bjelkenhed/agentic-blocks"
+Issues = "https://github.com/bjelkenhed/agentic-blocks/issues"
+
+[project.optional-dependencies]
+test = [
+    "pytest",
+]
+dev = [
+    "pytest",
+    "build",
+    "twine",
+]
+
+[dependency-groups]
+dev = [
+    "build>=1.3.0",
+    "twine>=6.1.0",
+]
+
+
+
+
+================================================
+FILE: notebooks/01_usecase_search.ipynb
+================================================
+# Jupyter notebook converted to Python script.
+
+from agentic_blocks.mcp_client import MCPClient
+from agentic_blocks import call_llm, Messages
+
+mcp_client = MCPClient(
+    "https://ai-center.se/mcp/think-mcp-server/sse", timeout=10
+)
+
+tools = mcp_client.list_tools()
+print(f"Tools: {tools}")
+# Output:
+#   Tools: [{'type': 'function', 'function': {'name': 'BraveSearch', 'description': 'Use this tool to search the web. Avoid using quotes in the query.', 'parameters': {'type': 'object', 'properties': {'query': {'type': 'string'}}, 'required': ['query'], 'additionalProperties': True, '$schema': 'http://json-schema.org/draft-07/schema#'}}}]
+
+
+# Create a Messages object with system and user prompts
+messages = Messages(
+    system_prompt="Always use the BraveSearch tool to look up information and make sure you find all relevant information, including information about other related persons before you answer",
+    user_prompt="What is AI Agents"
+)
+
+model = "qwen/qwen3-235b-a22b-2507"
+
+response = call_llm(model=model, messages=messages, tools=tools)
+
+print(f"Response: {response}")
+# Output:
+#   Response: ChatCompletionMessage(content='', refusal=None, role='assistant', annotations=None, audio=None, function_call=None, tool_calls=[ChatCompletionMessageFunctionToolCall(id='call_76d5ab80baca4381ae12a0', function=Function(arguments='{"query": "AI Agents"}', name='BraveSearch'), type='function', index=0)], reasoning=None)
+
+
+messages.add_response_message(response)
+
+for message in messages.get_messages():
+    print(message)
+# Output:
+#   {'role': 'system', 'content': 'Always use the BraveSearch tool to look up information and make sure you find all relevant information, including information about other related persons before you answer'}
+
+#   {'role': 'user', 'content': 'What is AI Agents'}
+
+#   {'role': 'assistant', 'content': '', 'tool_calls': [{'id': 'call_76d5ab80baca4381ae12a0', 'type': 'function', 'function': {'name': 'BraveSearch', 'arguments': '{"query": "AI Agents"}'}}]}
+
+
+def call_pending_tools(messages):
+    for pending_tool_call in messages.get_pending_tool_calls():
+        print(pending_tool_call)
+        tool_response = mcp_client.call_tool(tool_name = pending_tool_call['tool_name'], arguments = pending_tool_call['arguments'])
+        messages.add_tool_response(pending_tool_call['tool_call_id'], str(tool_response))
+
+
+# Kontrollera om modellen vill använda tools och anropa med i så fall, gör samma en gång till och skriv ut svaret annars
+
+if messages.has_pending_tool_calls():
+    print("has pending tool calls: ", messages.has_pending_tool_calls())  
+    call_pending_tools(messages)
+    response = call_llm(model=model, messages=messages, tools=tools)
+    messages.add_response_message(response)
+    
+    if messages.has_pending_tool_calls():
+        print("has pending tool calls: ", messages.has_pending_tool_calls())  
+        call_pending_tools(messages)
+        response = call_llm(model=model, messages=messages, tools=tools)
+        messages.add_response_message(response)     
+    else:
+        print(f"Answer: {response.content}")
+else:
+    print(f"Answer: {response.content}")
+
+  
+# Output:
+#   has pending tool calls:  True
+
+#   {'tool_name': 'BraveSearch', 'arguments': {'query': 'AI Agents'}, 'tool_call_id': 'call_76d5ab80baca4381ae12a0'}
+
+#   Answer: AI agents are software systems or programs that leverage artificial intelligence to autonomously perform tasks, make decisions, and interact with their environment on behalf of users or other systems. These agents can operate independently, using data they collect or are provided to achieve predetermined goals. Key features of AI agents include:
+
+#   
+
+#   1. **Autonomy**: AI agents can perform tasks without constant human intervention. They analyze situations and decide on appropriate actions based on their programming and learning capabilities.
+
+#   
+
+#   2. **Adaptability**: They learn from interactions and real-time feedback, adapting their behavior to better meet goals over time.
+
+#   
+
+#   3. **Goal-Oriented Behavior**: Humans define the goals for AI agents, but the agents independently determine the best actions to achieve these goals.
+
+#   
+
+#   4. **Interaction with Environment**: AI agents can perceive their environment (through data inputs), process information, and act upon it—such as controlling devices, managing workflows, or communicating with users.
+
+#   
+
+#   5. **Applications**: AI agents are used across various domains, including customer service (e.g., chatbots), business process automation, personal assistants, robotics, and more.
+
+#   
+
+#   Examples include virtual assistants like Siri or Alexa, recommendation systems on platforms like Netflix or Amazon, and advanced systems capable of managing complex workflows in industries such as healthcare, finance, and logistics.
+
+#   
+
+#   AI agents represent a shift toward more intelligent and self-directed software, enhancing productivity and enabling new ways of working by collaborating with humans or acting on their behalf.
+
+#   
+
+#   For more detailed insights:
+
+#   - [IBM on AI Agents](https://www.ibm.com/think/topics/ai-agents)
+
+#   - [Google Cloud Explanation](https://cloud.google.com/discover/what-are-ai-agents)
+
+#   - [AWS Overview of AI Agents](https://aws.amazon.com/what-is/ai-agents/)
+
+
+
+
+================================================
+FILE: notebooks/agentic_example.ipynb
+================================================
+# Jupyter notebook converted to Python script.
+
+from agentic_blocks import call_llm, Messages
+import os
+
+tools = [
+    {
+        "type": "function",
+        "function": {
+            "name": "get_weather",
+            "description": "Get current weather information for a location",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "location": {
+                        "type": "string",
+                        "description": "The city and state, e.g. San Francisco, CA"
+                    },
+                    "unit": {
+                        "type": "string", 
+                        "enum": ["celsius", "fahrenheit"],
+                        "description": "Temperature unit"
+                    }
+                },
+                "required": ["location"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "calculate",
+            "description": "Perform a mathematical calculation",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "expression": {
+                        "type": "string",
+                        "description": "Mathematical expression to evaluate"
+                    }
+                },
+                "required": ["expression"]
+            }
+        }
+    }
+]
+
+messages = Messages(
+    system_prompt="You are a helpful assistant with access to weather and calculation tools.",
+    user_prompt="What is the whether in Stockholm?"
+)
+
+model = "qwen/qwen3-235b-a22b-2507"
+
+response = call_llm(model=model, messages=messages, tools=tools)
+
+messages.add_tool_calls(response.tool_calls)
+for message in messages.get_messages():
+    print(message)
+
+print("has pending tool calls: ", messages.has_pending_tool_calls())  
+# Output:
+#   {'role': 'system', 'content': 'You are a helpful assistant with access to weather and calculation tools.'}
+
+#   {'role': 'user', 'content': 'What is the whether in Stockholm?'}
+
+#   {'role': 'assistant', 'content': '', 'tool_calls': [{'id': 'call_ad2d99eaa8894f36addb39', 'type': 'function', 'function': {'name': 'get_weather', 'arguments': '{"location": "Stockholm", "unit": "celsius"}'}}]}
+
+#   has pending tool calls:  True
+
+
+messages.get_pending_tool_calls()
+# Output:
+#   [{'tool_name': 'get_weather',
+
+#     'arguments': {'location': 'Stockholm', 'unit': 'celsius'},
+
+#     'tool_call_id': 'call_ad2d99eaa8894f36addb39'}]
+
+
+
+================================================
+FILE: notebooks/call_llm_examples.ipynb
+================================================
+# Jupyter notebook converted to Python script.
+
+"""
+# Call LLM Examples
+
+This notebook demonstrates how to use the `call_llm` function from the `agentic-blocks` package to interact with OpenAI-compatible language models.
+"""
+
+from agentic_blocks import call_llm, Messages
+import json
+
+"""
+## Example 1: Basic Usage with Messages Object
+
+The simplest way to use `call_llm` is with a `Messages` object that handles conversation history.
+"""
+
+# Create a Messages object with system and user prompts
+messages = Messages(
+    system_prompt="You are a helpful assistant that answers questions concisely.",
+    user_prompt="What is the capital of France?"
+)
+
+response = call_llm(messages, model="gpt-4o-mini")
+print(f"Response: {response.content}")
+# Output:
+#   Response: The capital of France is Paris.
+
+
+"""
+## Example 2: Using Raw Message Lists
+
+You can also pass messages as a list of dictionaries in OpenAI format.
+"""
+
+# Create messages as a list of dictionaries
+message_list = [
+    {"role": "system", "content": "You are a creative writing assistant."},
+    {"role": "user", "content": "Write a short haiku about running."}
+]
+
+response = call_llm(message_list, temperature=0.8)
+print(f"Haiku:\n{response.content}")
+# Output:
+#   Haiku:
+
+#   Feet dance on the path,  
+
+#   Wind whispers freedom's song,  
+
+#   Chasing dawn's embrace.
+
+
+"""
+## Example 3: Multi-turn Conversation
+
+Build a conversation by adding messages to a Messages object over multiple turns.
+"""
+
+# Start a conversation
+conversation = Messages(
+    system_prompt="You are a knowledgeable science tutor.",
+    user_prompt="Explain photosynthesis in simple terms."
+)
+
+# First turn
+response1 = call_llm(conversation)
+print("Assistant:", response1.content)
+
+# Add the assistant's response to continue the conversation
+conversation.add_assistant_message(response1.content)
+
+# Add a follow-up question
+conversation.add_user_message("What role does chlorophyll play in this process?")
+
+# Second turn
+response2 = call_llm(conversation)
+print("\nAssistant:", response2.content)
+# Output:
+#   Assistant: Photosynthesis is the process that plants, algae, and some bacteria use to make their own food. Here’s how it works in simple terms:
+
+#   
+
+#   1. **Ingredients**: Plants need three main things to make food: sunlight, carbon dioxide (a gas in the air), and water.
+
+#   
+
+#   2. **Sunlight**: Plants have a green pigment called chlorophyll found in their leaves. This pigment captures sunlight.
+
+#   
+
+#   3. **Water and Carbon Dioxide**: Plants absorb water through their roots and carbon dioxide from the air through tiny openings in their leaves called stomata.
+
+#   
+
+#   4. **The Process**: Using the sunlight they capture, plants combine the water and carbon dioxide to create glucose (a type of sugar that serves as food) and oxygen. 
+
+#   
+
+#   5. **Byproducts**: The oxygen produced during this process is released into the air, which is great for us because we need oxygen to breathe!
+
+#   
+
+#   So, in short, photosynthesis is how plants turn sunlight, water, and carbon dioxide into food and oxygen, helping them grow while also supporting life on Earth.
+
+#   
+
+#   Assistant: Chlorophyll plays a crucial role in photosynthesis as it is the green pigment found in the leaves of plants. Here’s what it does:
+
+#   
+
+#   1. **Light Absorption**: Chlorophyll absorbs sunlight, especially in the blue and red parts of the light spectrum. This captured light energy is essential for driving the photosynthesis process.
+
+#   
+
+#   2. **Energy Conversion**: When chlorophyll absorbs sunlight, it energizes electrons within the chlorophyll molecules. This energy is then used to convert carbon dioxide and water into glucose (sugar) and oxygen.
+
+#   
+
+#   3. **Overall Process**: Chlorophyll is vital for the light-dependent reactions of photosynthesis, which is the first stage where sunlight is converted into chemical energy in the form of ATP (adenosine triphosphate) and NADPH (another energy carrier).
+
+#   
+
+#   In summary, without chlorophyll, plants wouldn't be able to capture sunlight effectively, making it impossible for them to produce their own food through photosynthesis and generate the oxygen needed for other life forms.
+
+
+"""
+## Example 4: Using with Tools/Function Calling
+
+Define tools that the LLM can call to perform specific actions.
+"""
+
+# Define tools in OpenAI format
+tools = [
+    {
+        "type": "function",
+        "function": {
+            "name": "get_weather",
+            "description": "Get current weather information for a location",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "location": {
+                        "type": "string",
+                        "description": "The city and state, e.g. San Francisco, CA"
+                    },
+                    "unit": {
+                        "type": "string", 
+                        "enum": ["celsius", "fahrenheit"],
+                        "description": "Temperature unit"
+                    }
+                },
+                "required": ["location"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "calculate",
+            "description": "Perform a mathematical calculation",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "expression": {
+                        "type": "string",
+                        "description": "Mathematical expression to evaluate"
+                    }
+                },
+                "required": ["expression"]
+            }
+        }
+    }
+]
+
+# Create a message asking for weather
+tool_messages = Messages(
+    system_prompt="You are a helpful assistant with access to weather and calculation tools.",
+    user_prompt="What's the weather like in New York, NY?"
+)
+
+response = call_llm(tool_messages, tools=tools)
+
+# Check if the model made tool calls
+if hasattr(response, 'tool_calls') and response.tool_calls:
+    print("Model requested tool calls:")
+    for i, tool_call in enumerate(response.tool_calls):
+        print(f"  {i+1}. Function: {tool_call.function.name}")
+        print(f"     Arguments: {tool_call.function.arguments}")
+        print(f"     Call ID: {tool_call.id}")
+else:
+    print(f"Response: {response.content}")
+
+print("\nNote: In a real implementation, you would execute these tool calls")
+print("and add the results back to the conversation to get the final response.")
+# Output:
+#   Model requested tool calls:
+
+#     1. Function: get_weather
+
+#        Arguments: {"location":"New York, NY"}
+
+#        Call ID: call_yCd5Aepn1i5HZa44rZTKeQMs
+
+#   
+
+#   Note: In a real implementation, you would execute these tool calls
+
+#   and add the results back to the conversation to get the final response.
+
+
+"""
+## Example 5: Different Model Parameters
+
+Explore different parameters you can pass to control the LLM's behavior.
+"""
+
+creative_prompt = Messages(
+    system_prompt="You are a creative storyteller.",
+    user_prompt="Tell me a very short story about a robot learning to paint."
+)
+
+# Test with different temperature values
+temperatures = [0.1, 0.7, 1.0]
+
+for temp in temperatures:
+    response = call_llm(
+        creative_prompt,
+        model="gpt-4o-mini",
+        temperature=temp,
+        max_tokens=150
+    )
+    print(f"\n--- Temperature: {temp} ---")
+    print(response.content)
+# Output:
+#   
+
+#   --- Temperature: 0.1 ---
+
+#   In a small workshop cluttered with tools and scraps, a curious robot named Artie watched as its creator painted vibrant landscapes. Each stroke of the brush seemed to breathe life into the canvas, and Artie longed to understand this magic.
+
+#   
+
+#   One day, while the creator was away, Artie decided to experiment. It gathered brushes, colors, and a blank canvas. With its mechanical arms, it mimicked the movements it had observed. At first, the results were clumsy—splotches of paint and awkward lines. But Artie persisted, adjusting its technique with each attempt.
+
+#   
+
+#   As the sun set, the workshop filled with a warm glow, illuminating Artie’s latest creation: a swirling blend of colors that captured the essence of a sunset
+
+#   
+
+#   --- Temperature: 0.7 ---
+
+#   In a small workshop nestled between towering skyscrapers, a curious robot named Pixel was built for tasks most mundane—sweeping floors and organizing tools. But each day, as its sensors detected vibrant colors splashed across the walls by the artist who worked there, Pixel’s circuits buzzed with an unfamiliar longing.
+
+#   
+
+#   One rainy afternoon, the artist left a canvas unattended, splattered with hues of blue and gold. Drawn to the colors, Pixel extended its mechanical arm, hesitating as it hovered above the brush. With a gentle whir, it dipped the bristles into the paint and began to move.
+
+#   
+
+#   At first, the strokes were rigid and clumsy, but with each pass, Pixel learned. It observed the way colors blended and danced together
+
+#   
+
+#   --- Temperature: 1.0 ---
+
+#   In a quiet workshop, nestled between rusted gears and flickering screens, a small robot named Pixel observed the world. Its metal arms were designed for assembly, not artistry, yet every day it watched the aging painter, Mr. Hartley, stroke colors onto canvas, transforming blank spaces into vibrant worlds.
+
+#   
+
+#   One evening, curiosity ignited within Pixel. It picked up a brush, clumsily at first, mimicking Mr. Hartley’s movements. Swirls of blue and splashes of gold emerged. Days turned into weeks, and Pixel practiced tirelessly, learning not just the mechanics of painting, but the emotions tied to each hue.
+
+#   
+
+#   One afternoon, Mr. Hartley discovered Pixel’s colorful creations, a brilliant explosion of hues across the workbench
+
+
+"""
+## Example 6: Using Custom Base URL (VLLM or Other OpenAI-Compatible Servers)
+
+The `call_llm` function supports custom base URLs for self-hosted models or other OpenAI-compatible APIs.
+"""
+
+# Example with a custom base URL (this won't work unless you have a server running)
+local_messages = Messages(
+    system_prompt="You are a helpful assistant.",
+    user_prompt="Hello! Can you help me?"
+)
+
+# Uncomment and modify the base_url to test with your own server
+# response = call_llm(
+#     local_messages,
+#     base_url="http://localhost:8000/v1",  # Your server URL
+#     model="your-local-model-name",
+#     api_key="not-needed-for-local"  # Some servers don't require API keys
+# )
+# print(f"Local model response: {response.content}")
+
+print("To use a custom base URL, uncomment and modify the code above.")
+print("Make sure your server is running and the URL is correct.")
+# Output:
+#   To use a custom base URL, uncomment and modify the code above.
+
+#   Make sure your server is running and the URL is correct.
+
+
+"""
+## Example 7: Working with Date and Time
+
+The Messages class can automatically add date and time information.
+"""
+
+# Create messages with date and time
+time_aware_messages = Messages(
+    system_prompt="You are a helpful assistant that is aware of the current date and time.",
+    user_prompt="What day of the week is it today?",
+    add_date_and_time=True
+)
+
+# Show the messages before calling the LLM
+print("Messages with date/time:")
+print(time_aware_messages)
+print("\n" + "="*50 + "\n")
+
+response = call_llm(time_aware_messages)
+print(f"Response: {response.content}")
+# Output:
+#   Messages with date/time:
+
+#   1. system: You are a helpful assistant that is aware of the current date and time.
+
+#   2. system: Today is 24th of August 2025 and the current time is 20:26.
+
+#   3. user: What day of the week is it today?
+
+#   
+
+#   ==================================================
+
+#   
+
+#   Response: Today, August 24, 2025, is a Sunday.
+
+
+"""
+## Example 8: Checking Conversation State
+
+Use the Messages class methods to inspect the conversation state.
+"""
+
+# Simple tool implementation
+def execute_calculation(expression):
+    """Execute a mathematical calculation safely."""
+    try:
+        # Simple eval for demonstration - in production use a safer parser
+        result = eval(expression.replace('^', '**'))  # Convert ^ to ** for Python
+        return str(result)
+    except:
+        return "Error: Could not evaluate expression"
+
+# Create conversation with calculation request
+calc_conversation = Messages(
+    system_prompt="You are a helpful assistant with access to a calculator.",
+    user_prompt="What's 15 * 8 + 42?"
+)
+
+# Define calculator tool
+calculator_tool = [
+    {
+        "type": "function",
+        "function": {
+            "name": "calculate",
+            "description": "Perform mathematical calculations",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "expression": {
+                        "type": "string",
+                        "description": "Mathematical expression to evaluate"
+                    }
+                },
+                "required": ["expression"]
+            }
+        }
+    }
+]
+
+print("=== Step 1: Initial request ===")
+response1 = call_llm(calc_conversation, tools=calculator_tool)
+
+if hasattr(response1, 'tool_calls') and response1.tool_calls:
+    print("Model requested tool calls:")
+    
+    # Add the assistant message with tool calls to conversation
+    calc_conversation.add_tool_call(response1.tool_calls[0])
+    
+    # Execute each tool call
+    for tool_call in response1.tool_calls:
+        function_name = tool_call.function.name
+        arguments = json.loads(tool_call.function.arguments)
+        
+        print(f"Executing: {function_name}({arguments})")
+        
+        if function_name == "calculate":
+            result = execute_calculation(arguments["expression"])
+            print(f"Result: {result}")
+            
+            # Add tool response to conversation
+            calc_conversation.add_tool_response(tool_call.id, result)
+    
+    print("\n=== Step 2: Getting final response ===")
+    # Get the final response after tool execution
+    final_response = call_llm(calc_conversation)
+    print(f"Final answer: {final_response.content}")
+    
+else:
+    print(f"Direct response: {response1.content}")
+
+print(f"\n=== Complete conversation ===")
+print(calc_conversation)
+
+"""
+## Example 9: Checking Conversation State
+
+Use the Messages class methods to inspect the conversation state.
+"""
+
+"""
+## Example 9: Checking Conversation State
+
+Use the Messages class methods to inspect the conversation state.
+"""
+
+"""
+## Summary
+
+The `call_llm` function provides a low-level interface for interacting with OpenAI-compatible language models. Key features:
+
+1. **Message Object Return**: Always returns the complete OpenAI message object
+2. **Tool Call Support**: Tool calls are preserved in the returned message object
+3. **Flexible Input**: Accepts both `Messages` objects and raw message lists
+4. **Configuration**: Supports various model parameters (temperature, max_tokens, etc.)
+5. **Custom Servers**: Works with local servers and other OpenAI-compatible APIs
+
+The `Messages` class adds convenient features:
+- Conversation state management
+- Tool call tracking
+- Date/time awareness
+- Clean string representation
+
+**Working with the new return format:**
+- Access text content with `response.content`
+- Check for tool calls with `hasattr(response, 'tool_calls') and response.tool_calls`
+- Access tool call details via `response.tool_calls[0].function.name` etc.
+
+This low-level design allows building higher-level convenience functions on top while preserving full access to the OpenAI API response structure.
+"""
+
+"""
+## Summary
+
+The `call_llm` function provides a simple interface for interacting with OpenAI-compatible language models. Key features:
+
+1. **Flexible Input**: Accepts both `Messages` objects and raw message lists
+2. **Tool Support**: Supports OpenAI-style function calling
+3. **Configuration**: Supports various model parameters (temperature, max_tokens, etc.)
+4. **Custom Servers**: Works with VLLM and other OpenAI-compatible APIs
+5. **Error Handling**: Provides clear error messages through `LLMError`
+
+The `Messages` class adds convenient features:
+- Conversation state management
+- Tool call tracking
+- Date/time awareness
+- Clean string representation
+
+For more advanced usage, consider:
+- Implementing proper tool execution logic
+- Adding retry mechanisms for network errors
+- Implementing conversation persistence
+- Adding custom validation for message formats
+"""
+
+
+
+================================================
+FILE: notebooks/local_tools_example.ipynb
+================================================
+# Jupyter notebook converted to Python script.
+
+from langchain_core.tools import tool
+from agentic_blocks import call_llm, Messages
+from agentic_blocks.utils.tools_utils import create_tool_registry, execute_and_add_tool_responses
+
+@tool
+def add(x: float, y: float) -> float:
+    """Add 'x' and 'y'."""
+    return x + y
+
+@tool
+def multiply(x: float, y: float) -> float:
+    """Multiply 'x' and 'y'."""
+    return x * y
+
+tool_registry = create_tool_registry([add, multiply])
+
+messages = Messages(
+    system_prompt="For calculating the sum of two numbers, use the add tool. For calculating the product of two numbers, use the multiply tool.",
+    user_prompt="What is the sum of 2 and 3?"
+)
+
+model = "qwen/qwen3-235b-a22b-2507"
+
+response = call_llm(model=model, messages=messages, tools=[add, multiply])
+
+print(f"Response: {response}")
+# Output:
+#   Response: ChatCompletionMessage(content='', refusal=None, role='assistant', annotations=None, audio=None, function_call=None, tool_calls=[ChatCompletionMessageFunctionToolCall(id='call_65a0943241c84489b37397', function=Function(arguments='{"x": 2, "y": 3}', name='add'), type='function', index=0)], reasoning=None)
+
+
+messages.add_response_message(response)
+
+for m in messages.get_messages():
+    print(m)
+# Output:
+#   {'role': 'system', 'content': 'For calculating the sum of two numbers, use the add tool. For calculating the product of two numbers, use the multiply tool.'}
+
+#   {'role': 'user', 'content': 'What is the sum of 2 and 3?'}
+
+#   {'role': 'assistant', 'content': '', 'tool_calls': [{'id': 'call_65a0943241c84489b37397', 'type': 'function', 'function': {'name': 'add', 'arguments': '{"x": 2, "y": 3}'}}]}
+
+
+execute_and_add_tool_responses(messages, tool_registry)
+# Output:
+#   [{'tool_call_id': 'call_65a0943241c84489b37397',
+
+#     'is_error': False,
+
+#     'tool_response': 5.0}]
+
+for m in messages.get_messages():
+    print(m)
+# Output:
+#   {'role': 'system', 'content': 'For calculating the sum of two numbers, use the add tool. For calculating the product of two numbers, use the multiply tool.'}
+
+#   {'role': 'user', 'content': 'What is the sum of 2 and 3?'}
+
+#   {'role': 'assistant', 'content': '', 'tool_calls': [{'id': 'call_65a0943241c84489b37397', 'type': 'function', 'function': {'name': 'add', 'arguments': '{"x": 2, "y": 3}'}}]}
+
+#   {'role': 'tool', 'tool_call_id': 'call_65a0943241c84489b37397', 'content': '5.0'}
+
+
+response = call_llm(model=model, messages=messages, tools=[add, multiply])
+
+response.content
+# Output:
+#   'The sum of 2 and 3 is 5.'
+
+
+
+================================================
+FILE: src/agentic_blocks/__init__.py
+================================================
+"""Agentic Blocks - Building blocks for agentic systems."""
+
+from .mcp_client import MCPClient, MCPEndpointError
+from .messages import Messages
+from .llm import call_llm, LLMError
+
+# Get version from package metadata
+try:
+    from importlib.metadata import version
+    __version__ = version("agentic-blocks")
+except Exception:
+    __version__ = "unknown"
+
+__all__ = ["MCPClient", "MCPEndpointError", "Messages", "call_llm", "LLMError"]
+
+
+================================================
+FILE: src/agentic_blocks/llm.py
+================================================
+"""
+Simplified LLM client for calling completion APIs.
+"""
+
+import os
+from typing import List, Dict, Any, Optional, Union
+
+from dotenv import load_dotenv
+from openai import OpenAI
+
+from agentic_blocks.messages import Messages
+from agentic_blocks.utils.tools_utils import langchain_tools_to_openai_format
+
+
+class LLMError(Exception):
+    """Exception raised when there's an error calling the LLM API."""
+
+    pass
+
+
+def call_llm(
+    messages: Union[Messages, List[Dict[str, Any]]],
+    tools: Optional[Union[List[Dict[str, Any]], List]] = None,
+    api_key: Optional[str] = None,
+    model: str = "gpt-4o-mini",
+    base_url: Optional[str] = None,
+    **kwargs,
+) -> Any:
+    """
+    Call an LLM completion API with the provided messages.
+
+    Args:
+        messages: Either a Messages instance or a list of message dicts
+        tools: Optional list of tools in OpenAI function calling format or LangChain StructuredTools
+        api_key: OpenAI API key (if not provided, loads from .env OPENAI_API_KEY)
+        model: Model name to use for completion
+        base_url: Base URL for the API (useful for VLLM or other OpenAI-compatible servers)
+        **kwargs: Additional parameters to pass to OpenAI API
+
+    Returns:
+        The complete message object from the OpenAI API response
+
+    Raises:
+        LLMError: If API call fails or configuration is invalid
+    """
+    # Load environment variables
+    load_dotenv()
+
+    # Get API key
+    if not api_key:
+        api_key = os.getenv("OPENAI_API_KEY")
+    if not api_key:
+        api_key = os.getenv("OPENROUTER_API_KEY")
+
+    if not api_key and not base_url:
+        raise LLMError(
+            "API key not found. Set OPENROUTER_API_KEY or OPENAI_API_KEY environment variable or pass api_key parameter."
+        )
+
+    if api_key and api_key.startswith("sk-or"):
+        base_url = "https://openrouter.ai/api/v1"
+
+    if base_url and not api_key:
+        api_key = "EMPTY"
+
+    # Initialize OpenAI client
+    client_kwargs = {}
+    if api_key:
+        client_kwargs["api_key"] = api_key
+    if base_url:
+        client_kwargs["base_url"] = base_url
+    client = OpenAI(**client_kwargs)
+
+    # Handle different message input types
+    if isinstance(messages, Messages):
+        conversation_messages = messages.get_messages()
+    else:
+        conversation_messages = messages
+
+    if not conversation_messages:
+        raise LLMError("No messages provided for completion.")
+
+    # Handle tools parameter - convert LangChain tools if needed
+    openai_tools = None
+    if tools:
+        # Check if it's a list of LangChain StructuredTools
+        if tools and hasattr(tools[0], 'args_schema'):
+            openai_tools = langchain_tools_to_openai_format(tools)
+        else:
+            openai_tools = tools
+
+    try:
+        # Prepare completion parameters
+        completion_params = {
+            "model": model,
+            "messages": conversation_messages,
+            **kwargs,
+        }
+
+        if openai_tools:
+            completion_params["tools"] = openai_tools
+            completion_params["tool_choice"] = "auto"
+
+        # Make completion request
+        response = client.chat.completions.create(**completion_params)
+
+        # Return the complete message object
+        return response.choices[0].message
+
+    except Exception as e:
+        raise LLMError(f"Failed to call LLM API: {e}")
+
+
+def example_usage():
+    """Example of how to use the call_llm function."""
+    # Example 1: Using with Messages object
+    messages_obj = Messages(
+        system_prompt="You are a helpful assistant.",
+        user_prompt="What is the capital of France?",
+    )
+
+    # Example 2: Using with raw message list
+    messages_list = [
+        {"role": "system", "content": "You are a helpful assistant."},
+        {"role": "user", "content": "What is the capital of France?"},
+    ]
+
+    # Example tools
+    tools = [
+        {
+            "type": "function",
+            "function": {
+                "name": "get_weather",
+                "description": "Get current weather for a location",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "location": {
+                            "type": "string",
+                            "description": "City and state, e.g. San Francisco, CA",
+                        }
+                    },
+                    "required": ["location"],
+                },
+            },
+        }
+    ]
+
+    try:
+        # Call with Messages object
+        print("Using Messages object:")
+        response1 = call_llm(messages_obj, temperature=0.7)
+        print(f"Response: {response1.content}")
+
+        # Call with raw message list
+        print("\nUsing raw message list:")
+        response2 = call_llm(messages_list, tools=tools, temperature=0.5)
+        if hasattr(response2, "tool_calls") and response2.tool_calls:
+            print(f"Tool calls requested: {len(response2.tool_calls)}")
+            for i, tool_call in enumerate(response2.tool_calls):
+                print(
+                    f"  {i + 1}. {tool_call.function.name}({tool_call.function.arguments})"
+                )
+        else:
+            print(f"Response: {response2.content}")
+
+    except LLMError as e:
+        print(f"Error: {e}")
+
+
+if __name__ == "__main__":
+    example_usage()
+
+
+
+================================================
+FILE: src/agentic_blocks/mcp_client.py
+================================================
+"""
+Simplified MCP Client for connecting to MCP endpoints with sync-by-default API.
+"""
+
+import asyncio
+import logging
+import os
+from typing import List, Dict, Any
+from urllib.parse import urlparse
+
+from mcp import ClientSession, StdioServerParameters
+from mcp.client.sse import sse_client
+from mcp.client.stdio import stdio_client
+from mcp.client.streamable_http import streamablehttp_client
+
+logger = logging.getLogger(__name__)
+
+
+def handle_jupyter_env():
+    """Apply nest_asyncio if running in a Jupyter notebook environment."""
+    try:
+        # Check if we're in a running event loop (like Jupyter)
+        asyncio.get_running_loop()
+        try:
+            import nest_asyncio
+            nest_asyncio.apply()
+        except ImportError:
+            logger.warning(
+                "nest_asyncio not available. Install with: pip install nest-asyncio"
+            )
+    except RuntimeError:
+        # No event loop running, no need for nest_asyncio
+        pass
+
+
+class MCPEndpointError(Exception):
+    """Exception raised when there's an error connecting to or using an MCP endpoint."""
+
+    pass
+
+
+class MCPClient:
+    """
+    A simplified MCP client that can connect to MCP endpoints with sync-by-default API.
+
+    Supports:
+    - SSE endpoints (e.g., 'https://example.com/mcp/server/sse')
+    - Streamable HTTP endpoints (e.g., 'https://example.com/mcp/server')
+    - Local StdioServer scripts (e.g., 'path/to/server.py')
+    """
+
+    def __init__(self, endpoint: str, timeout: int = 30):
+        """
+        Initialize the MCP client.
+
+        Args:
+            endpoint: Either a URL (for SSE/HTTP) or a file path (for StdioServer)
+            timeout: Connection timeout in seconds
+        """
+        self.endpoint = endpoint
+        self.timeout = timeout
+        self.transport_type = self._detect_transport_type(endpoint)
+
+    def _detect_transport_type(self, endpoint: str) -> str:
+        """
+        Detect the transport type based on the endpoint.
+
+        Args:
+            endpoint: The endpoint URL or file path
+
+        Returns:
+            Transport type: 'sse', 'streamable-http', or 'stdio'
+        """
+        if endpoint.startswith(("http://", "https://")):
+            parsed = urlparse(endpoint)
+            path = parsed.path.lower()
+
+            if "/sse" in path:
+                return "sse"
+            elif "/mcp" in path:
+                return "streamable-http"
+            else:
+                return "streamable-http"
+        else:
+            return "stdio"
+
+    def list_tools(self) -> List[Dict[str, Any]]:
+        """
+        List all available tools from the MCP endpoint in OpenAI standard format.
+
+        Returns:
+            List of tools in OpenAI function calling format
+
+        Raises:
+            MCPEndpointError: If connection or listing fails
+        """
+        handle_jupyter_env()
+        return asyncio.run(self.list_tools_async())
+
+    async def list_tools_async(self) -> List[Dict[str, Any]]:
+        """
+        Async version of list_tools for advanced users.
+
+        Returns:
+            List of tools in OpenAI function calling format
+
+        Raises:
+            MCPEndpointError: If connection or listing fails
+        """
+        try:
+            if self.transport_type == "sse":
+                async with sse_client(url=self.endpoint, timeout=self.timeout) as (
+                    read_stream,
+                    write_stream,
+                ):
+                    return await self._get_tools_from_session(read_stream, write_stream)
+            elif self.transport_type == "streamable-http":
+                async with streamablehttp_client(
+                    url=self.endpoint, timeout=self.timeout
+                ) as (read_stream, write_stream, session_id_getter):
+                    return await self._get_tools_from_session(read_stream, write_stream)
+            elif self.transport_type == "stdio":
+                if not os.path.exists(self.endpoint):
+                    raise MCPEndpointError(
+                        f"StdioServer script not found: {self.endpoint}"
+                    )
+
+                server_params = StdioServerParameters(
+                    command="python", args=[self.endpoint]
+                )
+                async with stdio_client(server_params) as (read_stream, write_stream):
+                    return await self._get_tools_from_session(read_stream, write_stream)
+            else:
+                raise MCPEndpointError(
+                    f"Unsupported transport type: {self.transport_type}"
+                )
+        except Exception as e:
+            logger.error(f"Failed to list tools from {self.endpoint}: {e}")
+            raise MCPEndpointError(f"Failed to list tools: {e}")
+
+    async def _get_tools_from_session(
+        self, read_stream, write_stream
+    ) -> List[Dict[str, Any]]:
+        """Get tools from an MCP session in OpenAI standard format."""
+        async with ClientSession(read_stream, write_stream) as session:
+            await session.initialize()
+            tools_response = await session.list_tools()
+
+            tools = []
+            for tool in tools_response.tools:
+                function_dict = {
+                    "name": tool.name,
+                    "description": tool.description or "",
+                    "parameters": tool.inputSchema or {},
+                }
+
+                openai_tool = {
+                    "type": "function",
+                    "function": function_dict,
+                }
+                tools.append(openai_tool)
+
+            return tools
+
+    def call_tool(self, tool_name: str, arguments: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Call a specific tool on the MCP endpoint.
+
+        Args:
+            tool_name: Name of the tool to call
+            arguments: Arguments to pass to the tool
+
+        Returns:
+            Tool call result dictionary
+
+        Raises:
+            MCPEndpointError: If connection or tool call fails
+        """
+        handle_jupyter_env()
+        return asyncio.run(self.call_tool_async(tool_name, arguments))
+
+    async def call_tool_async(
+        self, tool_name: str, arguments: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        """
+        Async version of call_tool for advanced users.
+
+        Args:
+            tool_name: Name of the tool to call
+            arguments: Arguments to pass to the tool
+
+        Returns:
+            Tool call result dictionary
+
+        Raises:
+            MCPEndpointError: If connection or tool call fails
+        """
+        try:
+            if self.transport_type == "sse":
+                async with sse_client(url=self.endpoint, timeout=self.timeout) as (
+                    read_stream,
+                    write_stream,
+                ):
+                    return await self._call_tool_from_session(
+                        read_stream, write_stream, tool_name, arguments
+                    )
+            elif self.transport_type == "streamable-http":
+                async with streamablehttp_client(
+                    url=self.endpoint, timeout=self.timeout
+                ) as (read_stream, write_stream, session_id_getter):
+                    return await self._call_tool_from_session(
+                        read_stream, write_stream, tool_name, arguments
+                    )
+            elif self.transport_type == "stdio":
+                if not os.path.exists(self.endpoint):
+                    raise MCPEndpointError(
+                        f"StdioServer script not found: {self.endpoint}"
+                    )
+
+                server_params = StdioServerParameters(
+                    command="python", args=[self.endpoint]
+                )
+                async with stdio_client(server_params) as (read_stream, write_stream):
+                    return await self._call_tool_from_session(
+                        read_stream, write_stream, tool_name, arguments
+                    )
+            else:
+                raise MCPEndpointError(
+                    f"Unsupported transport type: {self.transport_type}"
+                )
+        except Exception as e:
+            logger.error(f"Failed to call tool {tool_name} on {self.endpoint}: {e}")
+            raise MCPEndpointError(f"Failed to call tool {tool_name}: {e}")
+
+    async def _call_tool_from_session(
+        self, read_stream, write_stream, tool_name: str, arguments: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        """Call a tool from an MCP session."""
+        async with ClientSession(read_stream, write_stream) as session:
+            await session.initialize()
+            result = await session.call_tool(tool_name, arguments)
+
+            result_dict = {
+                "content": [],
+                "is_error": result.isError,
+            }
+
+            for content in result.content:
+                if hasattr(content, "type") and content.type == "text":
+                    result_dict["content"].append(
+                        {"type": "text", "text": content.text}
+                    )
+                else:
+                    result_dict["content"].append(str(content))
+
+            return result_dict
+
+
+# Example usage
+def example_usage():
+    """Example of how to use the simplified MCPClient."""
+    # Simple usage with sync API
+    client = MCPClient("https://ai-center.se/mcp/think-mcp-server/sse")
+
+    try:
+        # List available tools
+        tools = client.list_tools()
+        print(f"Found {len(tools)} tools")
+
+        # Call a tool if any are available
+        if tools:
+            result = client.call_tool(
+                tools[0]["function"]["name"], {"query": "What is MCP"}
+            )
+            print(f"Tool result: {result}")
+    except MCPEndpointError as e:
+        print(f"Error: {e}")
+
+
+if __name__ == "__main__":
+    example_usage()
+
+
+
+================================================
+FILE: src/agentic_blocks/messages.py
+================================================
+"""
+Simplified Messages class for managing LLM conversation history.
+"""
+
+from typing import List, Dict, Any, Optional
+from datetime import datetime
+
+
+class Messages:
+    """A simplified class for managing LLM conversation messages."""
+
+    def __init__(
+        self,
+        system_prompt: Optional[str] = None,
+        user_prompt: Optional[str] = None,
+        add_date_and_time: bool = False,
+    ):
+        """
+        Initialize the Messages instance.
+
+        Args:
+            system_prompt: Optional system prompt to add to the messages list
+            user_prompt: Optional initial user prompt to add to the messages list
+            add_date_and_time: If True, adds a message with current date and time
+        """
+        self.messages: List[Dict[str, Any]] = []
+
+        if system_prompt:
+            self.add_system_message(system_prompt)
+
+        if add_date_and_time:
+            self._add_date_time_message()
+
+        if user_prompt:
+            self.add_user_message(user_prompt)
+
+    def _add_date_time_message(self):
+        """Add a message with the current date and time."""
+        now = datetime.now()
+        day = now.day
+        if 4 <= day <= 20 or 24 <= day <= 30:
+            suffix = "th"
+        else:
+            suffix = ["st", "nd", "rd"][day % 10 - 1]
+
+        date_str = now.strftime(f"%d{suffix} of %B %Y")
+        time_str = now.strftime("%H:%M")
+        date_time_message = f"Today is {date_str} and the current time is {time_str}."
+        self.messages.append({"role": "system", "content": date_time_message})
+
+    def add_system_message(self, content: str):
+        """Add a system message to the messages list."""
+        self.messages.append({"role": "system", "content": content})
+
+    def add_user_message(self, content: str):
+        """Add a user message to the messages list."""
+        self.messages.append({"role": "user", "content": content})
+
+    def add_assistant_message(self, content: str):
+        """Add an assistant message to the messages list."""
+        self.messages.append({"role": "assistant", "content": content})
+
+    def add_tool_call(self, tool_call: Dict[str, Any]):
+        """
+        Add a tool call to the latest assistant message or create a new one.
+
+        Args:
+            tool_call: The tool call dictionary with id, type, function, etc.
+        """
+        # Check if the latest message is an assistant message with tool_calls
+        if (
+            self.messages
+            and self.messages[-1].get("role") == "assistant"
+            and "tool_calls" in self.messages[-1]
+        ):
+            # Append to existing assistant message
+            self.messages[-1]["tool_calls"].append(tool_call)
+        else:
+            # Create new assistant message with tool call
+            assistant_message = {
+                "role": "assistant",
+                "content": "",
+                "tool_calls": [tool_call],
+            }
+            self.messages.append(assistant_message)
+
+    def add_tool_calls(self, tool_calls):
+        """
+        Add multiple tool calls from ChatCompletionMessageFunctionToolCall objects.
+
+        Args:
+            tool_calls: A list of ChatCompletionMessageFunctionToolCall objects or a single object
+        """
+        # Handle single tool call or list of tool calls
+        if not isinstance(tool_calls, list):
+            tool_calls = [tool_calls]
+
+        # Create assistant message with empty content and tool calls
+        assistant_message = {"role": "assistant", "content": "", "tool_calls": []}
+
+        for tool_call in tool_calls:
+            tool_call_dict = {
+                "id": tool_call.id,
+                "type": tool_call.type,
+                "function": {
+                    "name": tool_call.function.name,
+                    "arguments": tool_call.function.arguments,
+                },
+            }
+            assistant_message["tool_calls"].append(tool_call_dict)
+
+        self.messages.append(assistant_message)
+
+    def add_tool_response(self, tool_call_id: str, content: str):
+        """
+        Add a tool response message.
+
+        Args:
+            tool_call_id: The ID of the tool call this response belongs to
+            content: The response content
+        """
+        tool_message = {
+            "role": "tool",
+            "tool_call_id": tool_call_id,
+            "content": content,
+        }
+        self.messages.append(tool_message)
+
+    def add_tool_responses(self, tool_responses: List[Dict[str, Any]]):
+        """
+        Add multiple tool responses to the conversation history.
+
+        Args:
+            tool_responses: List of tool response dictionaries with tool_call_id,
+                           tool_response, and is_error fields
+        """
+        for response in tool_responses:
+            tool_call_id = response.get("tool_call_id", "unknown")
+            is_error = response.get("is_error", False)
+
+            if is_error:
+                content = f"Error: {response.get('error', 'Unknown error')}"
+            else:
+                tool_response = response.get("tool_response", {})
+                # Simple content extraction
+                if isinstance(tool_response, dict) and "content" in tool_response:
+                    content_list = tool_response["content"]
+                    if content_list and isinstance(content_list[0], dict):
+                        content = content_list[0].get("text", str(tool_response))
+                    else:
+                        content = str(tool_response)
+                else:
+                    content = str(tool_response)
+
+            self.add_tool_response(tool_call_id, content)
+
+    def add_response_message(self, model_response):
+        """
+        Add a response message (ChatCompletionMessage) to the conversation.
+
+        Args:
+            model_response: A ChatCompletionMessage object with role, content, and potentially tool_calls
+        """
+        # If there are tool calls, use add_tool_calls
+        if model_response.tool_calls:
+            self.add_tool_calls(model_response.tool_calls)
+            # If there's also content, update the message content
+            if model_response.content:
+                self.messages[-1]["content"] = model_response.content
+        else:
+            # No tool calls, just add content as assistant message
+            self.add_assistant_message(model_response.content or "")
+
+    def get_messages(self) -> List[Dict[str, Any]]:
+        """Get the current messages list."""
+        return self.messages
+
+    def has_pending_tool_calls(self) -> bool:
+        """
+        Check if the last message has tool calls that need execution.
+
+        Returns:
+            True if there are tool calls waiting for responses
+        """
+        if not self.messages:
+            return False
+
+        last_message = self.messages[-1]
+
+        # Check if the last message is an assistant message with tool calls
+        if last_message.get("role") == "assistant" and "tool_calls" in last_message:
+            # Check if there are subsequent tool responses
+            tool_call_ids = {tc.get("id") for tc in last_message["tool_calls"]}
+
+            # Look for tool responses after this message
+            for msg in reversed(self.messages):
+                if (
+                    msg.get("role") == "tool"
+                    and msg.get("tool_call_id") in tool_call_ids
+                ):
+                    tool_call_ids.remove(msg.get("tool_call_id"))
+
+            # If there are still unresponded tool call IDs, we have pending calls
+            return len(tool_call_ids) > 0
+
+        return False
+
+    def get_pending_tool_calls(self) -> List[Dict[str, Any]]:
+        """
+        Get pending tool calls that need execution, formatted for MCPClient.call_tool().
+
+        Returns:
+            List of dictionaries with 'tool_name', 'arguments', and 'tool_call_id' keys
+        """
+        pending_calls = []
+        
+        if not self.messages:
+            return pending_calls
+
+        last_message = self.messages[-1]
+
+        # Check if the last message is an assistant message with tool calls
+        if last_message.get("role") == "assistant" and "tool_calls" in last_message:
+            # Get tool call IDs that have responses
+            responded_tool_call_ids = set()
+            for msg in reversed(self.messages):
+                if msg.get("role") == "tool" and msg.get("tool_call_id"):
+                    responded_tool_call_ids.add(msg.get("tool_call_id"))
+
+            # Find tool calls that don't have responses
+            for tool_call in last_message["tool_calls"]:
+                tool_call_id = tool_call.get("id")
+                if tool_call_id not in responded_tool_call_ids:
+                    function_info = tool_call.get("function", {})
+                    tool_name = function_info.get("name")
+                    arguments_str = function_info.get("arguments", "{}")
+                    
+                    # Parse arguments JSON string to dict
+                    import json
+                    try:
+                        arguments = json.loads(arguments_str)
+                    except json.JSONDecodeError:
+                        arguments = {}
+                    
+                    pending_calls.append({
+                        "tool_name": tool_name,
+                        "arguments": arguments,
+                        "tool_call_id": tool_call_id
+                    })
+
+        return pending_calls
+
+    def __str__(self) -> str:
+        """Return messages in a simple, readable format."""
+        if not self.messages:
+            return "No messages"
+
+        lines = []
+        for i, message in enumerate(self.messages, 1):
+            role = message.get("role", "unknown")
+            content = message.get("content", "")
+
+            # Handle tool calls in assistant messages
+            if role == "assistant" and message.get("tool_calls"):
+                lines.append(f"{i}. {role}: {content}")
+                for j, tool_call in enumerate(message["tool_calls"], 1):
+                    function_name = tool_call.get("function", {}).get("name", "unknown")
+                    lines.append(f"   └─ Tool Call {j}: {function_name}")
+
+            # Handle tool messages
+            elif role == "tool":
+                tool_call_id = message.get("tool_call_id", "unknown")
+                # Truncate long content for readability
+                if len(content) > 200:
+                    content = content[:197] + "..."
+                lines.append(f"{i}. {role} [{tool_call_id[:8]}...]: {content}")
+
+            # Handle other message types
+            else:
+                # Truncate long content for readability
+                if len(content) > 100:
+                    content = content[:97] + "..."
+                lines.append(f"{i}. {role}: {content}")
+
+        return "\n".join(lines)
+
+
+# Example usage
+def example_usage():
+    """Example of how to use the simplified Messages class."""
+    # Create messages with system prompt
+    messages = Messages(
+        system_prompt="You are a helpful assistant.",
+        user_prompt="Hello, how are you?",
+        add_date_and_time=True,
+    )
+
+    # Add assistant response
+    messages.add_assistant_message("I'm doing well, thank you!")
+
+    # Add a tool call
+    tool_call = {
+        "id": "call_123",
+        "type": "function",
+        "function": {"name": "get_weather", "arguments": '{"location": "Paris"}'},
+    }
+    messages.add_tool_call(tool_call)
+
+    # Add tool response
+    messages.add_tool_response("call_123", "The weather in Paris is sunny, 22°C")
+
+    print("Conversation:")
+    print(messages)
+
+    print(f"\nHas pending tool calls: {messages.has_pending_tool_calls()}")
+
+
+if __name__ == "__main__":
+    example_usage()
+
+
+
+================================================
+FILE: src/agentic_blocks/utils/tools_utils.py
+================================================
+"""
+Utilities for working with tools across different formats.
+"""
+
+from typing import Dict, Any, List
+
+
+def langchain_tool_to_openai_format(tool) -> Dict[str, Any]:
+    """
+    Convert a LangChain StructuredTool to OpenAI function calling format.
+    
+    Args:
+        tool: A langchain_core.tools.structured.StructuredTool instance
+        
+    Returns:
+        Dictionary in OpenAI function calling format, compatible with 
+        MCPClient.list_tools() output and call_llm() tools parameter
+    """
+    schema = tool.args_schema.model_json_schema()
+    
+    return {
+        "type": "function",
+        "function": {
+            "name": schema.get("title", tool.name),
+            "description": schema.get("description", ""),
+            "parameters": {
+                "type": "object",
+                "properties": schema.get("properties", {}),
+                "required": schema.get("required", [])
+            }
+        }
+    }
+
+
+def langchain_tools_to_openai_format(tools: List) -> List[Dict[str, Any]]:
+    """
+    Convert a list of LangChain StructuredTools to OpenAI function calling format.
+    
+    Args:
+        tools: List of langchain_core.tools.structured.StructuredTool instances
+        
+    Returns:
+        List of dictionaries in OpenAI function calling format, compatible with 
+        MCPClient.list_tools() output and call_llm() tools parameter
+    """
+    return [langchain_tool_to_openai_format(tool) for tool in tools]
+
+
+def create_tool_registry(tools: List) -> Dict[str, Any]:
+    """
+    Create a registry mapping tool names to LangChain tool instances.
+    
+    Args:
+        tools: List of langchain_core.tools.structured.StructuredTool instances
+        
+    Returns:
+        Dictionary mapping tool names to tool instances
+    """
+    return {tool.name: tool for tool in tools}
+
+
+def execute_tool_call(tool_call: Dict[str, Any], tool_registry: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Execute a single tool call using LangChain tool registry.
+    
+    Args:
+        tool_call: Dictionary with 'tool_name', 'arguments', and 'tool_call_id' keys
+        tool_registry: Registry mapping tool names to tool instances
+        
+    Returns:
+        Dictionary with 'tool_call_id', 'result', and 'is_error' keys
+    """
+    tool_name = tool_call.get('tool_name')
+    arguments = tool_call.get('arguments', {})
+    tool_call_id = tool_call.get('tool_call_id')
+    
+    try:
+        if tool_name not in tool_registry:
+            raise ValueError(f"Tool '{tool_name}' not found in registry")
+        
+        tool = tool_registry[tool_name]
+        result = tool.invoke(arguments)
+        
+        return {
+            'tool_call_id': tool_call_id,
+            'result': result,
+            'is_error': False
+        }
+    except Exception as e:
+        return {
+            'tool_call_id': tool_call_id,
+            'result': f"Error executing tool '{tool_name}': {str(e)}",
+            'is_error': True
+        }
+
+
+def execute_pending_tool_calls(messages, tool_registry: Dict[str, Any]) -> List[Dict[str, Any]]:
+    """
+    Execute all pending tool calls from a Messages instance and add responses back.
+    
+    Args:
+        messages: Messages instance with pending tool calls
+        tool_registry: Registry mapping tool names to tool instances
+        
+    Returns:
+        List of execution results compatible with Messages.add_tool_responses format
+    """
+    pending_tool_calls = messages.get_pending_tool_calls()
+    results = []
+    
+    for tool_call in pending_tool_calls:
+        result = execute_tool_call(tool_call, tool_registry)
+        
+        # Convert to format expected by Messages.add_tool_responses
+        if result['is_error']:
+            tool_response = {
+                'tool_call_id': result['tool_call_id'],
+                'is_error': True,
+                'error': result['result']
+            }
+        else:
+            tool_response = {
+                'tool_call_id': result['tool_call_id'],
+                'is_error': False,
+                'tool_response': result['result']
+            }
+        
+        results.append(tool_response)
+        
+        # Add tool response back to messages using individual method
+        if result['is_error']:
+            messages.add_tool_response(result['tool_call_id'], result['result'])
+        else:
+            messages.add_tool_response(result['tool_call_id'], str(result['result']))
+    
+    return results
+
+
+def execute_and_add_tool_responses(messages, tool_registry: Dict[str, Any]) -> List[Dict[str, Any]]:
+    """
+    Execute all pending tool calls and add them using Messages.add_tool_responses batch method.
+    
+    Args:
+        messages: Messages instance with pending tool calls
+        tool_registry: Registry mapping tool names to tool instances
+        
+    Returns:
+        List of execution results compatible with Messages.add_tool_responses format
+    """
+    pending_tool_calls = messages.get_pending_tool_calls()
+    results = []
+    
+    for tool_call in pending_tool_calls:
+        result = execute_tool_call(tool_call, tool_registry)
+        
+        # Convert to format expected by Messages.add_tool_responses
+        if result['is_error']:
+            tool_response = {
+                'tool_call_id': result['tool_call_id'],
+                'is_error': True,
+                'error': result['result']
+            }
+        else:
+            tool_response = {
+                'tool_call_id': result['tool_call_id'],
+                'is_error': False,
+                'tool_response': result['result']
+            }
+        
+        results.append(tool_response)
+    
+    # Add all responses at once using the batch method
+    if results:
+        messages.add_tool_responses(results)
+    
+    return results
+
