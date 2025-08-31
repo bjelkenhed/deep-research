@@ -38,6 +38,7 @@ classifiers = [
 
 dependencies = [
     "agentic-blocks",
+    "pocketflow",
     "tavily-python",
     "python-dotenv",
     "openai",
