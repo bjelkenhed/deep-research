@@ -43,6 +43,7 @@ dependencies = [
     "python-dotenv",
     "openai",
     "langchain-core",
+    "markdown-pdf",
 ]
 
 [project.urls]
